@@ -4,10 +4,10 @@ storage: none
 framework: netcore3.0, netstandard2.0, netstandard2.1
 
 nuget FSharp.Core
+nuget FParsec
 nuget Microsoft.AspNetCore.Authentication
 nuget Microsoft.NET.Test.Sdk
 nuget TaskBuilder.fs
 nuget Unquote
 nuget xunit
 nuget xunit.runner.visualstudio
-nuget coverlet.collector

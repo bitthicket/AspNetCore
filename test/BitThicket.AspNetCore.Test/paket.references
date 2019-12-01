@@ -1,6 +1,5 @@
-Microsoft.NET.Test.Sdk
 FSharp.Core
-coverlet.collector
+Microsoft.NET.Test.Sdk
 Unquote
 xunit
 xunit.runner.visualstudio

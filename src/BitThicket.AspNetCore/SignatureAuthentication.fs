@@ -10,6 +10,7 @@ open Microsoft.AspNetCore.Authentication
 open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.Logging
 open Microsoft.Net.Http.Headers
+open FParsec
 open FSharp.Control.Tasks.V2
 open FSharp.Data.UnitSystems.SI.UnitSymbols
 
@@ -45,6 +46,12 @@ type SignatureValidationError =
      headers="(request-target) (created) host digest content-length",
      signature="Base64(RSA-SHA512(signing string))"
 *)
+module private _Parsers =
+    let pkey = IdentifierOptions() |> identifier
+    let pvalue = pchar '"' >>. manySatisfy (fun c -> c <> '"') .>> pchar '"'
+    let pkvp = pkey .>> pchar '=' .>>.? pvalue
+    let pkvpList = sepBy pkvp (pchar ',')
+
 type UnvalidatedSignatureEnvelope =
     { keyId: string option
       signature: string option
@@ -53,9 +60,6 @@ type UnvalidatedSignatureEnvelope =
       expires: string option
       headers: string option }
    with
-        static member private Regex = 
-            Regex(@"([a-zA-Z0-9]+)=""([^""]*)""", RegexOptions.Compiled)
-        
         static member TryParse (raw:string) =
             let tryGetValue (map:Map<_,_>) key =
                 match map.TryGetValue(key) with
@@ -63,17 +67,17 @@ type UnvalidatedSignatureEnvelope =
                 | (false, v) -> None
 
             try
-                UnvalidatedSignatureEnvelope.Regex.Matches(raw.Trim())
-                |> Seq.cast<Match>
-                |> Seq.map 
-                    (fun m -> 
-                        (m.Groups.[1].Value, m.Groups.[2].Value.Trim()))
-                |> Map.ofSeq
-                |> Ok
+                match run _Parsers.pkvpList (raw.Trim()) with
+                | Failure(errorMsg, _, _) ->
+                    printfn "error: %s" errorMsg
+                    errorMsg |> Result.Error
+                | Success(result, _, _) -> 
+                    Map.ofList result
+                    |> Result.Ok
             with
             | e ->
                 printfn "%A" e
-                e.Message |> Error
+                e.Message |> Result.Error
             |> Result.bind
                 (fun map -> 
                     { keyId = tryGetValue map "keyId"
@@ -81,7 +85,7 @@ type UnvalidatedSignatureEnvelope =
                       algorithm = tryGetValue map "algorithm"
                       created = tryGetValue map "created"
                       expires = tryGetValue map "expires"
-                      headers = tryGetValue map "headers" } |> Ok)
+                      headers = tryGetValue map "headers" } |> Result.Ok)
 
 type SignatureEnvelope =
     { keyId: string
