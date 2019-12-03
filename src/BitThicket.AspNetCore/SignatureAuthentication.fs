@@ -25,7 +25,7 @@ type SignatureAlgorithm =
             | _ -> None
 
 type IClientSecretProvider<'TClientKey> =
-    abstract GetClientSecretAsync : 'TClientKey -> Task<byte[]>
+    abstract GetClientSecretAsync : 'TClientKey -> Task<byte[] option>
 
 type SignatureAuthenticationOptions<'TClientKey>
     (secretProvider:IClientSecretProvider<'TClientKey>, ?realm:string, ?algorithms:SignatureAlgorithm[], ?maxSkew:int<s>) =
@@ -173,8 +173,8 @@ module SignatureHelpers =
         | None -> Ok state
         | Some tsString -> 
             let tsValue = ref 0L
-            if Int64.TryParse(tsString, tsValue) |> not
-            then InvalidCreatedTimestamp "'created' field not a valid unix timestamp" |> Error
+            if not (Int64.TryParse(tsString, tsValue))
+            then InvalidCreatedTimestamp "not a valid unix timestamp" |> Error
             else
                 try
                     match DateTimeOffset.FromUnixTimeSeconds(!tsValue) with
