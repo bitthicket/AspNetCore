@@ -98,24 +98,13 @@ type UnvalidatedSignatureEnvelope =
                       expires = tryGetValue map "expires"
                       headers = tryGetValue map "headers" } |> Ok)
 
-[<CustomEquality>]
 type SignatureEnvelope =
     { keyId: string
       signature: byte[]
       algorithm: SignatureAlgorithm option
-      created: DateTimeOffset option
-      expires: DateTimeOffset option
+      created: int64 option
+      expires: int64 option
       headers: string[] option }
-
-    override this.Equals(other) =
-        match other with
-        | :? SignatureEnvelope as otherEnv ->
-            this.keyId = otherEnv.keyId
-            && ReadOnlySpan(this.signature)
-                .SequenceEqual(ReadOnlySpan(otherEnv.signature))
-
-        | _ -> false
-
 
 module SignatureHelpers =
 
@@ -191,7 +180,11 @@ module SignatureHelpers =
                     match DateTimeOffset.FromUnixTimeSeconds(!tsValue) with
                     | timestamp when timestamp > (DateTimeOffset.UtcNow.AddSeconds(float options.MaxClockSkew)) -> 
                         InvalidCreatedTimestamp "'created' timestamp in the future" |> Error
-                    | timestamp -> Ok { state with validatedEnvelope = { state.validatedEnvelope with created = Some timestamp}}
+                    | timestamp -> 
+                        Ok { state 
+                               with validatedEnvelope = 
+                                        { state.validatedEnvelope 
+                                            with created = timestamp.ToUnixTimeSeconds() |> Some }}
                 with
                 | e -> InvalidCreatedTimestamp e.Message |> Error
 
@@ -207,7 +200,11 @@ module SignatureHelpers =
                 try match DateTimeOffset.FromUnixTimeSeconds(!tsValue) with
                     | timestamp when timestamp < (DateTimeOffset.UtcNow.AddSeconds(float -options.MaxClockSkew)) ->
                         InvalidExpiresTimestamp "'expires' timestamp in the past" |> Error
-                    | timestamp -> Ok { state with validatedEnvelope = { state.validatedEnvelope with expires = Some timestamp }}
+                    | timestamp -> 
+                        Ok { state 
+                               with validatedEnvelope = 
+                                        { state.validatedEnvelope 
+                                            with expires = timestamp.ToUnixTimeSeconds() |> Some }}
                 with
                 | e -> InvalidExpiresTimestamp e.Message |> Error
 

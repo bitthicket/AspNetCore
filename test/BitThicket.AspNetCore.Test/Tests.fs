@@ -57,7 +57,7 @@ let ``[SignatureHelpers] validateSignatureEnvelope with minimal valid envelope O
         { keyId = "1234"
           signature = signature
           algorithm = None
-          created =  Some offset
+          created =  offset.ToUnixTimeSeconds() |> Some
           expires = None
           headers = None}
 
