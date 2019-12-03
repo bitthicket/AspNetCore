@@ -6,13 +6,15 @@ open System.Security.Claims
 open System.Security.Cryptography
 open System.Text
 open System.Text.RegularExpressions
+open System.Threading.Tasks
 open Microsoft.AspNetCore.Authentication
 open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.Logging
 open Microsoft.Net.Http.Headers
-open FParsec
 open FSharp.Control.Tasks.V2
 open FSharp.Data.UnitSystems.SI.UnitSymbols
+
+open Garage.FSharp.Result
 
 type SignatureAlgorithm =
     | HmacSha256
@@ -22,23 +24,28 @@ type SignatureAlgorithm =
             | "hmac-sha256" -> Some HmacSha256 
             | _ -> None
 
-type SignatureAuthenticationOptions() =
+type IClientSecretProvider<'TClientKey> =
+    abstract GetClientSecretAsync : 'TClientKey -> Task<byte[]>
+
+type SignatureAuthenticationOptions<'TClientKey>
+    (secretProvider:IClientSecretProvider<'TClientKey>, ?realm:string, ?algorithms:SignatureAlgorithm[], ?maxSkew:int<s>) =
     inherit AuthenticationSchemeOptions()
-    member val Realm = String.Empty with get,set
-    member val SupportedAlgorithms = [| HmacSha256 |] with get,set
-    member val MaxClockSkew = 600<s> with get,set
+    member val Realm = defaultArg realm String.Empty with get,set
+    member val SupportedAlgorithms = defaultArg algorithms [| HmacSha256 |] with get,set
+    member val MaxClockSkew = defaultArg maxSkew 600<s> with get,set
+    member __.ClientSecretProvider = secretProvider
 
 type SignatureValidationError =
-    | RequiredParametersMissing of string seq
     | InvalidAlgorithm
+    | InvalidClient
     | InvalidCreatedTimestamp of string
     | InvalidExpiresTimestamp of string
     | InvalidHeaders
-    | NonceExpired
-    | InvalidClient
     | InvalidSignature
     | InvalidSignatureString of string
     | HashError of string
+    | NonceExpired
+    | RequiredParametersMissing of string seq
 
 (*
     example:
@@ -47,10 +54,15 @@ type SignatureValidationError =
      signature="Base64(RSA-SHA512(signing string))"
 *)
 module private _Parsers =
+    open FParsec
     let pkey = IdentifierOptions() |> identifier
     let pvalue = pchar '"' >>. manySatisfy (fun c -> c <> '"') .>> pchar '"'
     let pkvp = pkey .>> pchar '=' .>>.? pvalue
     let pkvpList = sepBy pkvp (pchar ',')
+
+type SignatureEnvelopeParseError =
+    | MissingHeaderValue
+    | ParserError of string
 
 type UnvalidatedSignatureEnvelope =
     { keyId: string option
@@ -67,17 +79,16 @@ type UnvalidatedSignatureEnvelope =
                 | (false, v) -> None
 
             try
-                match run _Parsers.pkvpList (raw.Trim()) with
-                | Failure(errorMsg, _, _) ->
+                match FParsec.CharParsers.run _Parsers.pkvpList (raw.Trim()) with
+                | FParsec.CharParsers.Failure(errorMsg, _, _) ->
                     printfn "error: %s" errorMsg
-                    errorMsg |> Result.Error
-                | Success(result, _, _) -> 
-                    Map.ofList result
-                    |> Result.Ok
+                    ParserError errorMsg |> Error
+                | FParsec.CharParsers.Success(result, _, _) -> 
+                    Map.ofList result |> Ok
             with
             | e ->
                 printfn "%A" e
-                e.Message |> Result.Error
+                ParserError e.Message |> Error
             |> Result.bind
                 (fun map -> 
                     { keyId = tryGetValue map "keyId"
@@ -85,8 +96,9 @@ type UnvalidatedSignatureEnvelope =
                       algorithm = tryGetValue map "algorithm"
                       created = tryGetValue map "created"
                       expires = tryGetValue map "expires"
-                      headers = tryGetValue map "headers" } |> Result.Ok)
+                      headers = tryGetValue map "headers" } |> Ok)
 
+[<CustomEquality>]
 type SignatureEnvelope =
     { keyId: string
       signature: byte[]
@@ -95,130 +107,140 @@ type SignatureEnvelope =
       expires: DateTimeOffset option
       headers: string[] option }
 
-// module private SignatureHelpers =
+    override this.Equals(other) =
+        match other with
+        | :? SignatureEnvelope as otherEnv ->
+            this.keyId = otherEnv.keyId
+            && ReadOnlySpan(this.signature)
+                .SequenceEqual(ReadOnlySpan(otherEnv.signature))
 
-//     type private SignatureEnvelopeValidationState =
-//         { unvalidatedEnvelope : UnvalidatedSignatureEnvelope
-//           validatedEnvelope : SignatureEnvelope }
+        | _ -> false
 
-//     type private SignatureValidationState =
-//         { envelope: SignatureEnvelope option
-//           request: HttpRequest option
-//           clientSecret : byte[] option 
-//           checkSignature : byte[] option }
-//         with 
-//             static member Default =
-//                 { envelope = None
-//                   request = None
-//                   clientSecret = None
-//                   checkSignature = None }
 
-//     let getSignatureHeaderValue = 
-//         (fun (h:IHeaderDictionary) -> h.[HeaderNames.Authorization])
-//         >> Seq.tryFind (fun auth -> auth.StartsWith("Signature"))
-//         >> Option.map (fun auth -> auth.IndexOf(' ') |> auth.Substring)
+module SignatureHelpers =
 
-//     let getUnvalidatedSignatureEnvelope (request:HttpRequest) =
-//         match getSignatureHeaderValue request.Headers with
-//         | None -> Error MissingHeaderValue
-//         | Some headerValue -> UnvalidatedSignatureEnvelope.TryParse headerValue
+    type private SignatureEnvelopeValidationState =
+        { unvalidatedEnvelope : UnvalidatedSignatureEnvelope
+          validatedEnvelope : SignatureEnvelope }
 
-//     let private validateRequiredParams (unvalidatedEnvelope:UnvalidatedSignatureEnvelope) =
-//         let missingRequiredFields = 
-//             match unvalidatedEnvelope.keyId with 
-//             | None -> ["keyId"]
-//             | Some s -> if String.IsNullOrEmpty(s) then ["keyId"] else []
-//             |> (fun mrf -> 
-//                    match unvalidatedEnvelope.signature with
-//                    | None -> "signature"::mrf
-//                    | Some s -> if String.IsNullOrEmpty(s) then "signature"::mrf else mrf)
+    type private SignatureValidationState =
+        { envelope: SignatureEnvelope option
+          request: HttpRequest option
+          clientSecret : byte[] option 
+          checkSignature : byte[] option }
+        with 
+            static member Default =
+                { envelope = None
+                  request = None
+                  clientSecret = None
+                  checkSignature = None }
+
+    let getSignatureHeaderValue = 
+        (fun (h:IHeaderDictionary) -> h.[HeaderNames.Authorization])
+        >> Seq.tryFind (fun auth -> auth.StartsWith("Signature"))
+        >> Option.map (fun auth -> auth.IndexOf(' ') |> auth.Substring)
+
+    let getUnvalidatedSignatureEnvelope (request:HttpRequest) =
+        match getSignatureHeaderValue request.Headers with
+        | None -> Error MissingHeaderValue
+        | Some headerValue -> UnvalidatedSignatureEnvelope.TryParse headerValue
+
+    let private validateRequiredParams (unvalidatedEnvelope:UnvalidatedSignatureEnvelope) =
+        let missingRequiredFields = 
+            match unvalidatedEnvelope.keyId with 
+            | None -> ["keyId"]
+            | Some s -> if String.IsNullOrEmpty(s) then ["keyId"] else []
+            |> (fun mrf -> 
+                   match unvalidatedEnvelope.signature with
+                   | None -> "signature"::mrf
+                   | Some s -> if String.IsNullOrEmpty(s) then "signature"::mrf else mrf)
         
-//         if not missingRequiredFields.IsEmpty
-//         then RequiredParametersMissing missingRequiredFields |> Error
-//         else
-//             { unvalidatedEnvelope = unvalidatedEnvelope
-//               validatedEnvelope = 
-//                 { keyId = unvalidatedEnvelope.keyId.Value
-//                   signature = Convert.FromBase64String(unvalidatedEnvelope.signature.Value)
-//                   algorithm = None
-//                   created = None
-//                   expires = None
-//                   headers = None }} |> Ok
+        if not missingRequiredFields.IsEmpty
+        then RequiredParametersMissing missingRequiredFields |> Error
+        else
+            { unvalidatedEnvelope = unvalidatedEnvelope
+              validatedEnvelope = 
+                { keyId = unvalidatedEnvelope.keyId.Value
+                  signature = Convert.FromBase64String(unvalidatedEnvelope.signature.Value)
+                  algorithm = None
+                  created = None
+                  expires = None
+                  headers = None }} |> Ok
 
-//     let private validateAlgorithm (options:SignatureAuthenticationOptions) (state:SignatureEnvelopeValidationState) =
-//         match state.unvalidatedEnvelope.algorithm with
-//         | None -> Ok state
-//         | Some algorithmName -> 
-//             match SignatureAlgorithm.TryParse algorithmName with
-//             | None -> InvalidAlgorithm |> Error
-//             | Some algo -> 
-//                 if Array.contains algo options.SupportedAlgorithms
-//                 then Ok {state with validatedEnvelope = { state.validatedEnvelope with algorithm = Some algo }}
-//                 else InvalidAlgorithm |> Error
+    let private validateAlgorithm<'tkey> (options:SignatureAuthenticationOptions<'tkey>) (state:SignatureEnvelopeValidationState) =
+        match state.unvalidatedEnvelope.algorithm with
+        | None -> Ok state
+        | Some algorithmName -> 
+            match SignatureAlgorithm.TryParse algorithmName with
+            | None -> InvalidAlgorithm |> Error
+            | Some algo -> 
+                if Array.contains algo options.SupportedAlgorithms
+                then Ok {state with validatedEnvelope = { state.validatedEnvelope with algorithm = Some algo }}
+                else InvalidAlgorithm |> Error
 
-//     let private validateCreated (options:SignatureAuthenticationOptions) (state:SignatureEnvelopeValidationState) =
-//         // §2.1.4: must be unix timestamp.  future timestamp must fail.  second precision.
-//         match state.unvalidatedEnvelope.created with
-//         | None -> Ok state
-//         | Some tsString -> 
-//             let tsValue = ref 0L
-//             if Int64.TryParse(tsString, tsValue) |> not
-//             then InvalidCreatedTimestamp "'created' field not a valid unix timestamp" |> Error
-//             else
-//                 try
-//                     match DateTimeOffset.FromUnixTimeSeconds(!tsValue) with
-//                     | timestamp when timestamp > (DateTimeOffset.UtcNow.AddSeconds(float options.MaxClockSkew)) -> 
-//                         InvalidCreatedTimestamp "'created' timestamp in the future" |> Error
-//                     | timestamp -> Ok { state with validatedEnvelope = { state.validatedEnvelope with created = Some timestamp}}
-//                 with
-//                 | e -> InvalidCreatedTimestamp e.Message |> Error
+    let private validateCreated<'tkey> (options:SignatureAuthenticationOptions<'tkey>) (state:SignatureEnvelopeValidationState) =
+        // §2.1.4: must be unix timestamp.  future timestamp must fail.  second precision.
+        match state.unvalidatedEnvelope.created with
+        | None -> Ok state
+        | Some tsString -> 
+            let tsValue = ref 0L
+            if Int64.TryParse(tsString, tsValue) |> not
+            then InvalidCreatedTimestamp "'created' field not a valid unix timestamp" |> Error
+            else
+                try
+                    match DateTimeOffset.FromUnixTimeSeconds(!tsValue) with
+                    | timestamp when timestamp > (DateTimeOffset.UtcNow.AddSeconds(float options.MaxClockSkew)) -> 
+                        InvalidCreatedTimestamp "'created' timestamp in the future" |> Error
+                    | timestamp -> Ok { state with validatedEnvelope = { state.validatedEnvelope with created = Some timestamp}}
+                with
+                | e -> InvalidCreatedTimestamp e.Message |> Error
 
-//     let private validateExpires (options:SignatureAuthenticationOptions) (state:SignatureEnvelopeValidationState) =
-//         // §2.1.5: must be unix integer, subsecond allowed. past timestamp fails
-//         match state.unvalidatedEnvelope.expires with
-//         | None -> Ok state
-//         | Some tsString ->
-//             let tsValue = ref 0L
-//             if Int64.TryParse(tsString,tsValue) |> not
-//             then InvalidExpiresTimestamp "'expires' field not a valid unix timestamp" |> Error
-//             else
-//                 try match DateTimeOffset.FromUnixTimeSeconds(!tsValue) with
-//                     | timestamp when timestamp < (DateTimeOffset.UtcNow.AddSeconds(float -options.MaxClockSkew)) ->
-//                         InvalidExpiresTimestamp "'expires' timestamp in the past" |> Error
-//                     | timestamp -> Ok { state with validatedEnvelope = { state.validatedEnvelope with expires = Some timestamp }}
-//                 with
-//                 | e -> InvalidExpiresTimestamp e.Message |> Error
+    let private validateExpires<'tkey> (options:SignatureAuthenticationOptions<'tkey>) (state:SignatureEnvelopeValidationState) =
+        // §2.1.5: must be unix integer, subsecond allowed. past timestamp fails
+        match state.unvalidatedEnvelope.expires with
+        | None -> Ok state
+        | Some tsString ->
+            let tsValue = ref 0L
+            if Int64.TryParse(tsString,tsValue) |> not
+            then InvalidExpiresTimestamp "'expires' field not a valid unix timestamp" |> Error
+            else
+                try match DateTimeOffset.FromUnixTimeSeconds(!tsValue) with
+                    | timestamp when timestamp < (DateTimeOffset.UtcNow.AddSeconds(float -options.MaxClockSkew)) ->
+                        InvalidExpiresTimestamp "'expires' timestamp in the past" |> Error
+                    | timestamp -> Ok { state with validatedEnvelope = { state.validatedEnvelope with expires = Some timestamp }}
+                with
+                | e -> InvalidExpiresTimestamp e.Message |> Error
 
-//     let private validateHeaders (options:SignatureAuthenticationOptions) (state:SignatureEnvelopeValidationState) =
-//         // §2.1.6: if not specified, then default is "(created)".  empty is different that non-specified
-//         match state.unvalidatedEnvelope.headers with
-//         | None -> Ok state
-//         | Some hString ->
-//             if String.IsNullOrWhiteSpace(hString)
-//             then InvalidHeaders |> Error
-//             else { state with
-//                     validatedEnvelope = 
-//                         { state.validatedEnvelope with 
-//                             headers = hString.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-//                                       |> Option.ofObj } } 
-//                  |> Ok
+    let private validateHeaders<'tkey> (options:SignatureAuthenticationOptions<'tkey>) (state:SignatureEnvelopeValidationState) =
+        // §2.1.6: if not specified, then default is "(created)".  empty is different that non-specified
+        match state.unvalidatedEnvelope.headers with
+        | None -> Ok state
+        | Some hString ->
+            if String.IsNullOrWhiteSpace(hString)
+            then InvalidHeaders |> Error
+            else { state with
+                    validatedEnvelope = 
+                        { state.validatedEnvelope with 
+                            headers = hString.Split([|' '|], StringSplitOptions.RemoveEmptyEntries)
+                                      |> Option.ofObj } } 
+                 |> Ok
 
-//     let validateSignatureEnvelope (options:SignatureAuthenticationOptions) (usigenv:UnvalidatedSignatureEnvelope) = 
-//         validateRequiredParams usigenv
-//         >>*= validateAlgorithm options
-//         >>*= validateCreated options
-//         >>*= validateExpires options
-//         >>*= validateHeaders options
-//         |> Result.map (fun state -> state.validatedEnvelope)
+    let validateSignatureEnvelope<'tkey> (options:SignatureAuthenticationOptions<'tkey>) (usigenv:UnvalidatedSignatureEnvelope) = 
+        validateRequiredParams usigenv
+        >>*= validateAlgorithm options
+        >>*= validateCreated options
+        >>*= validateExpires options
+        >>*= validateHeaders options
+        |> Result.map (fun state -> state.validatedEnvelope)
 
-//     let private ensureClientSecretAsync (repository:IRepository) state = task {
-//         let envelope = state.envelope.Value
-//         match! repository.GetClientSecret(envelope.keyId) with
-//         | None -> return InvalidClient |> Error
-//         | Some secret ->
-//             let key = Encoding.UTF8.GetBytes(secret)
-//             return { state with clientSecret = Some key } |> Ok
-//     }
+    // let private ensureClientSecretAsync (secretProvider:IClientSecretProvider) state = task {
+    //     let envelope = state.envelope.Value
+    //     match! repository.GetClientSecret(envelope.keyId) with
+    //     | None -> return InvalidClient |> Error
+    //     | Some secret ->
+    //         let key = Encoding.UTF8.GetBytes(secret)
+    //         return { state with clientSecret = Some key } |> Ok
+    // }
 
 //     let resolveRequestTarget (req:HttpRequest) =
 //         req.Path.Add(req.QueryString)

@@ -11,3 +11,5 @@ nuget TaskBuilder.fs
 nuget Unquote
 nuget xunit
 nuget xunit.runner.visualstudio
+
+github aggieben/garage-fsharp:3760e5e82b0c4170fb1dde24816bf359ba2fc0e2 TaskResult.fs
