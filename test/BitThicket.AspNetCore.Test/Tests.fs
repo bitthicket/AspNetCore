@@ -15,7 +15,7 @@ type UnvalidatedSignatureEnvelope with
           created = None; expires = None; headers = None }
 
 (*
-    Rules for validation:
+    Rules for validation, from 2.1 and 2.2 of the cavage draft RFC
      * keyId:
         - required
      * signature
