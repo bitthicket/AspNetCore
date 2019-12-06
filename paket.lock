@@ -163,3 +163,6 @@ NUGET
       xunit.extensibility.core (2.4.1)
     xunit.runner.visualstudio (2.4.1)
       Microsoft.NET.Test.Sdk (>= 15.0) - restriction: || (== netcoreapp3.0) (&& (== netstandard2.0) (>= netcoreapp1.0)) (&& (== netstandard2.1) (>= netcoreapp1.0))
+GITHUB
+  remote: aggieben/garage-fsharp
+    TaskResult.fs (3760e5e82b0c4170fb1dde24816bf359ba2fc0e2)
