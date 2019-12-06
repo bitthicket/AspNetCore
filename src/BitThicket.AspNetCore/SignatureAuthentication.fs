@@ -28,6 +28,10 @@ type SignatureAuthenticationOptions() =
     member val SupportedAlgorithms = [| HmacSha256 |] with get,set
     member val MaxClockSkew = 600<s> with get,set
 
+type UnvalidatedSignatureEnvelopeParsingError =
+    | MissingHeaderValue
+    | ParseError of string
+
 type SignatureValidationError =
     | RequiredParametersMissing of string seq
     | InvalidAlgorithm
@@ -95,33 +99,35 @@ type SignatureEnvelope =
       expires: DateTimeOffset option
       headers: string[] option }
 
-// module private SignatureHelpers =
+module private SignatureHelpers =
 
-//     type private SignatureEnvelopeValidationState =
-//         { unvalidatedEnvelope : UnvalidatedSignatureEnvelope
-//           validatedEnvelope : SignatureEnvelope }
+    type private SignatureEnvelopeValidationState =
+        { unvalidatedEnvelope : UnvalidatedSignatureEnvelope
+          validatedEnvelope : SignatureEnvelope }
 
-//     type private SignatureValidationState =
-//         { envelope: SignatureEnvelope option
-//           request: HttpRequest option
-//           clientSecret : byte[] option 
-//           checkSignature : byte[] option }
-//         with 
-//             static member Default =
-//                 { envelope = None
-//                   request = None
-//                   clientSecret = None
-//                   checkSignature = None }
+    type private SignatureValidationState =
+        { envelope: SignatureEnvelope option
+          request: HttpRequest option
+          clientSecret : byte[] option 
+          checkSignature : byte[] option }
+        with 
+            static member Default =
+                { envelope = None
+                  request = None
+                  clientSecret = None
+                  checkSignature = None } 
 
-//     let getSignatureHeaderValue = 
-//         (fun (h:IHeaderDictionary) -> h.[HeaderNames.Authorization])
-//         >> Seq.tryFind (fun auth -> auth.StartsWith("Signature"))
-//         >> Option.map (fun auth -> auth.IndexOf(' ') |> auth.Substring)
+    let getSignatureHeaderValue = 
+        (fun (h:IHeaderDictionary) -> h.[HeaderNames.Authorization])
+        >> Seq.tryFind (fun auth -> auth.StartsWith("Signature"))
+        >> Option.map (fun auth -> auth.IndexOf(' ') |> auth.Substring)
 
-//     let getUnvalidatedSignatureEnvelope (request:HttpRequest) =
-//         match getSignatureHeaderValue request.Headers with
-//         | None -> Error MissingHeaderValue
-//         | Some headerValue -> UnvalidatedSignatureEnvelope.TryParse headerValue
+    let getUnvalidatedSignatureEnvelope (request:HttpRequest) =
+        match getSignatureHeaderValue request.Headers with
+        | None -> Result.Error MissingHeaderValue
+        | Some headerValue -> 
+            UnvalidatedSignatureEnvelope.TryParse headerValue
+            |> Result.mapError (fun e -> ParseError e)
 
 //     let private validateRequiredParams (unvalidatedEnvelope:UnvalidatedSignatureEnvelope) =
 //         let missingRequiredFields = 
