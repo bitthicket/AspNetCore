@@ -184,3 +184,112 @@ let ``[SignatureHelpers] validateSignatureEnvelope with invalid created timestam
     let options = SignatureAuthenticationOptions(secretProvider)
 
     test <@ SignatureHelpers.validateSignatureEnvelope options envelope = Error (InvalidCreatedTimestamp "not a valid unix timestamp") @>
+
+[<Fact>]
+let ``[SignatureHelpers] validateSignatureEnvelope with future created timestamp Error``() =
+    let secret = Guid.NewGuid().ToByteArray()
+    let offset = DateTimeOffset.UtcNow
+    let signatureString = sprintf "created: %d" (offset.ToUnixTimeSeconds())
+
+    use hmac = new HMACSHA256(secret)
+    let signature = hmac.ComputeHash(Encoding.UTF8.GetBytes(signatureString))
+    let base64sig = Convert.ToBase64String(signature)
+
+    let envelope : UnvalidatedSignatureEnvelope = 
+        { keyId = Some "1234"
+          signature = Some base64sig
+          algorithm = None
+          created = (offset + TimeSpan.FromHours(1.0)).ToUnixTimeSeconds().ToString() |> Some
+          expires = None
+          headers = None }
+
+    let secretProvider = IdentityClientSecretProvider(None)
+    let options = SignatureAuthenticationOptions(secretProvider)
+
+    test <@ SignatureHelpers.validateSignatureEnvelope options envelope = Error (InvalidCreatedTimestamp "timestamp in the future") @>
+
+[<Fact>]
+let ``[SignatureHelpers] validateSignatureEnvelope with future created timestamp, but inside skew limit Ok``() =
+    let secret = Guid.NewGuid().ToByteArray()
+    let offset = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(3.0)
+    let signatureString = sprintf "created: %d" (offset.ToUnixTimeSeconds())
+
+    use hmac = new HMACSHA256(secret)
+    let signature = hmac.ComputeHash(Encoding.UTF8.GetBytes(signatureString))
+    let base64sig = Convert.ToBase64String(signature)
+
+    let envelope : UnvalidatedSignatureEnvelope = 
+        { keyId = Some "1234"
+          signature = Some base64sig
+          algorithm = None
+          created = offset.ToUnixTimeSeconds().ToString() |> Some
+          expires = None
+          headers = None }
+
+    let expected = 
+        { keyId = "1234"
+          signature = signature
+          algorithm = None
+          created =  offset.ToUnixTimeSeconds() |> Some
+          expires = None
+          headers = None}
+
+    let secretProvider = IdentityClientSecretProvider(None)
+    let options = SignatureAuthenticationOptions(secretProvider) // default skew is 5m
+
+    test <@ SignatureHelpers.validateSignatureEnvelope options envelope = Ok expected @>
+
+[<Fact>]
+let ``[SignatureHelpers] validateSignatureEnvelope with invalid expires timestamp Error``() =
+    let secret = Guid.NewGuid().ToByteArray()
+    let offset = DateTimeOffset.UtcNow
+    let signatureString = sprintf "created: %d" (offset.ToUnixTimeSeconds())
+    
+    use hmac = new HMACSHA256(secret)
+    let signature = hmac.ComputeHash(Encoding.UTF8.GetBytes(signatureString))
+    let base64sig = Convert.ToBase64String(signature)
+
+    let envelope : UnvalidatedSignatureEnvelope = 
+        { keyId = Some "1234"
+          signature = Some base64sig
+          algorithm = None
+          created = None
+          expires = Some "x"
+          headers = None }
+
+    let secretProvider = IdentityClientSecretProvider(None)
+    let options = SignatureAuthenticationOptions(secretProvider)
+
+    test <@ SignatureHelpers.validateSignatureEnvelope options envelope = Error (InvalidExpiresTimestamp "not a valid unix timestamp") @>
+
+[<Fact>]
+let ``[SignatureHelpers] validateSignatureEnvelope with valid expires timestamp Ok``() =
+    let secret = Guid.NewGuid().ToByteArray()
+    let created = DateTimeOffset.UtcNow
+    let expires = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(6.0)
+    let signatureString = sprintf "created: %d\nexpires: %d" (created.ToUnixTimeSeconds()) (expires.ToUnixTimeSeconds())
+
+    use hmac = new HMACSHA256(secret)
+    let signature = hmac.ComputeHash(Encoding.UTF8.GetBytes(signatureString))
+    let base64sig = Convert.ToBase64String(signature)
+
+    let envelope : UnvalidatedSignatureEnvelope = 
+        { keyId = Some "1234"
+          signature = Some base64sig
+          algorithm = None
+          created = created.ToUnixTimeSeconds().ToString() |> Some
+          expires = expires.ToUnixTimeSeconds().ToString() |> Some
+          headers = None }
+
+    let expected = 
+        { keyId = "1234"
+          signature = signature
+          algorithm = None
+          created =  created.ToUnixTimeSeconds() |> Some
+          expires = expires.ToUnixTimeSeconds() |> Some
+          headers = None}
+
+    let secretProvider = IdentityClientSecretProvider(None)
+    let options = SignatureAuthenticationOptions(secretProvider)
+
+    test <@ SignatureHelpers.validateSignatureEnvelope options envelope = Ok expected @>

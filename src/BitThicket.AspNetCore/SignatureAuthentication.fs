@@ -183,7 +183,7 @@ module SignatureHelpers =
                 try
                     match DateTimeOffset.FromUnixTimeSeconds(!tsValue) with
                     | timestamp when timestamp > (DateTimeOffset.UtcNow.AddSeconds(float options.MaxClockSkew)) -> 
-                        InvalidCreatedTimestamp "'created' timestamp in the future" |> Error
+                        InvalidCreatedTimestamp "timestamp in the future" |> Error
                     | timestamp -> 
                         Ok { state 
                                with validatedEnvelope = 
@@ -199,11 +199,11 @@ module SignatureHelpers =
         | Some tsString ->
             let tsValue = ref 0L
             if Int64.TryParse(tsString,tsValue) |> not
-            then InvalidExpiresTimestamp "'expires' field not a valid unix timestamp" |> Error
+            then InvalidExpiresTimestamp "not a valid unix timestamp" |> Error
             else
                 try match DateTimeOffset.FromUnixTimeSeconds(!tsValue) with
                     | timestamp when timestamp < (DateTimeOffset.UtcNow.AddSeconds(float -options.MaxClockSkew)) ->
-                        InvalidExpiresTimestamp "'expires' timestamp in the past" |> Error
+                        InvalidExpiresTimestamp "timestamp in the past" |> Error
                     | timestamp -> 
                         Ok { state 
                                with validatedEnvelope = 
