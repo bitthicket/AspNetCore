@@ -49,6 +49,9 @@ type IdentityClientSecretProvider(secret:byte[] option) =
     interface IClientSecretProvider<string> with
         member __.GetClientSecretAsync _ = Task.FromResult(secret)
 
+(* 
+    parsing tests, no RFC validation involved here
+*)
 [<Fact>]
 let ``[UnvalidatedSignatureEnvelope] TryParse keyId, empty signature Ok`` () =
     let headerString = """
@@ -76,6 +79,9 @@ let ``[UnvalidatedSignatureEnvelope] TryParse Error`` headerString =
             | Ok _ -> false
             | Error _ -> true @>
 
+(*
+    RFC validation tests.  Draft 12, §2.1
+*)
 [<Fact>]
 let ``[SignatureHelpers] validateSignatureEnvelope with minimal valid envelope Ok``() =
     let secret = Guid.NewGuid().ToByteArray()
