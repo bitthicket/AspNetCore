@@ -46,7 +46,7 @@ type UnvalidatedSignatureEnvelope with
           result in an error
 *)
 type IdentityClientSecretProvider(secret:byte[] option) =
-    interface IClientSecretProvider<string> with
+    interface IClientSecretProvider with
         member __.GetClientSecretAsync _ = Task.FromResult(secret)
 
 (* 

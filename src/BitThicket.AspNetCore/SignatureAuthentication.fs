@@ -36,9 +36,9 @@ type SignatureAuthenticationOptions
     member val Realm = defaultArg realm String.Empty with get,set
     member val SupportedAlgorithms = defaultArg algorithms [| HmacSha256 |] with get,set
     member val MaxClockSkew = defaultArg maxSkew 600<s> with get,set
-    member __.ClientSecretProvider = secretProvider
+    member val ClientSecretProvider = secretProvider with get,set
 
-    new() = SignatureAuthenticationOptions(null)
+    new() = SignatureAuthenticationOptions()
 
 type UnvalidatedSignatureEnvelopeParsingError =
     | MissingHeaderValue
@@ -322,12 +322,12 @@ module SignatureHelpers =
         | 0 -> Ok state
         | _ -> Error InvalidSignature
 
-    let validateSignature (secretProvider:IClientSecretProvider) (options:SignatureAuthenticationOptions) (req:HttpRequest) (sigenv:SignatureEnvelope) =
+    let validateSignature (options:SignatureAuthenticationOptions) (req:HttpRequest) (sigenv:SignatureEnvelope) =
         { SignatureValidationState.Default 
             with 
                 request = Some req
                 envelope = Some sigenv }
-        |> ensureClientSecretAsync secretProvider
+        |> ensureClientSecretAsync options.ClientSecretProvider
         <*-> computeCheckSignature
         <*-> compareSignatures
         <*>  (fun state -> state.envelope.Value.keyId) // drop state
@@ -340,29 +340,29 @@ type SignatureAuthenticationHandler(options, loggerFactory, encoder, clock, cach
             // this is necessary because the compiler machinery will place the expressions in the computational
             // expression below into a lambda, which takes them _out_ of the context of the class where the this
             // binding is accessible.  This binding is then captured as part of the closure for the CE
-            // let request = this.Request
-            // let logger = loggerFactory.CreateLogger<SignatureAuthenticationHandler>()
-            // let currentOptions = options.CurrentValue
-            // task {
-            //     match SignatureHelpers.getUnvalidatedSignatureEnvelope request with
-            //     | Error e -> 
-            //         logger.LogError("Error getting signature envelope: {0}", sprintf "%A" e)
-            //         return AuthenticateResult.NoResult()
-            //     | Ok unvalidatedEnvelope -> 
-            //         match SignatureHelpers.validateSignatureEnvelope currentOptions unvalidatedEnvelope with
-            //         | Error e ->
-            //             logger.LogError("Error validating signature: {0}", sprintf "%A" e)
-            //             return AuthenticateResult.NoResult()
-            //         | Ok envelope ->
-            //             let! validationResult = 
-            //                 SignatureHelpers.validateSignature repository currentOptions request envelope
-//                         match validationResult with
-//                         | Error err -> return AuthenticateResult.Fail (sprintf "%A" err)
-//                         | Ok clientId ->
-//                             let! principal = this.GetClaimsPrincipalForClient(clientId)
-//                             let ticket = AuthenticationTicket(principal, this.Scheme.Name)
-//                             return AuthenticateResult.Success(ticket)
-            // }
+            let request = this.Request
+            let logger = loggerFactory.CreateLogger<SignatureAuthenticationHandler>()
+            let currentOptions = options.CurrentValue
+            task {
+                match SignatureHelpers.getUnvalidatedSignatureEnvelope request with
+                | Error e -> 
+                    logger.LogError("Error getting signature envelope: {0}", sprintf "%A" e)
+                    return AuthenticateResult.NoResult()
+                | Ok unvalidatedEnvelope -> 
+                    match SignatureHelpers.validateSignatureEnvelope currentOptions unvalidatedEnvelope with
+                    | Error e ->
+                        logger.LogError("Error validating signature: {0}", sprintf "%A" e)
+                        return AuthenticateResult.NoResult()
+                    | Ok envelope ->
+                        let! validationResult = 
+                            SignatureHelpers.validateSignature currentOptions request envelope
+                        match validationResult with
+                        | Error err -> return AuthenticateResult.Fail (sprintf "%A" err)
+                        | Ok clientId ->
+                            let! principal = this.GetClaimsPrincipalForClient(clientId)
+                            let ticket = AuthenticationTicket(principal, this.Scheme.Name)
+                            return AuthenticateResult.Success(ticket)
+            }
 
     member this.GetClaimsPrincipalForClient(clientId:string) =
         let scheme = this.Scheme
