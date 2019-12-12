@@ -59,6 +59,8 @@ NUGET
     Microsoft.Bcl.AsyncInterfaces (1.1) - restriction: == netstandard2.1
       System.Threading.Tasks.Extensions (>= 4.5.2)
     Microsoft.CodeCoverage (16.4) - restriction: || (== netcoreapp3.1) (&& (== netstandard2.1) (>= net45)) (&& (== netstandard2.1) (>= netcoreapp2.1))
+    Microsoft.Extensions.Caching.Abstractions (3.1)
+      Microsoft.Extensions.Primitives (>= 3.1)
     Microsoft.Extensions.Configuration.Abstractions (3.1)
       Microsoft.Extensions.Primitives (>= 3.1)
     Microsoft.Extensions.DependencyInjection.Abstractions (3.1)

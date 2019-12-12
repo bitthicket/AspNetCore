@@ -3,4 +3,5 @@ File: TaskResult.fs
 FParsec
 FSharp.Core
 Microsoft.AspNetCore.Authentication
+Microsoft.Extensions.Caching.Abstractions
 TaskBuilder.fs
