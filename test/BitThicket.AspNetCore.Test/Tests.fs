@@ -53,6 +53,7 @@ type IdentityClientSecretProvider(secret:byte[] option) =
     parsing tests, no RFC validation involved here
 *)
 [<Fact>]
+[<Trait("Category", "Unit")>]
 let ``[UnvalidatedSignatureEnvelope] TryParse keyId, empty signature Ok`` () =
     let headerString = """
         keyId="1234",signature=""
@@ -63,6 +64,7 @@ let ``[UnvalidatedSignatureEnvelope] TryParse keyId, empty signature Ok`` () =
     test <@ UnvalidatedSignatureEnvelope.TryParse headerString = Ok expected @>
 
 [<Fact>]
+[<Trait("Category", "Unit")>]
 let ``[UnvalidatedSignatureEnvelope] TryParse keyId,signature Ok`` () =
     let headerString = """
         keyId="1234",signature="asdf"
@@ -73,6 +75,7 @@ let ``[UnvalidatedSignatureEnvelope] TryParse keyId,signature Ok`` () =
     test <@ UnvalidatedSignatureEnvelope.TryParse headerString = Ok expected @>
 
 [<Theory>]
+[<Trait("Category", "Unit")>]
 [<InlineData(@"keyId=""1234"",signature")>]
 let ``[UnvalidatedSignatureEnvelope] TryParse Error`` headerString =
     test <@ match UnvalidatedSignatureEnvelope.TryParse headerString with
@@ -83,6 +86,7 @@ let ``[UnvalidatedSignatureEnvelope] TryParse Error`` headerString =
     RFC validation tests.  Draft 12, §2.1
 *)
 [<Fact>]
+[<Trait("Category", "Unit")>]
 let ``[SignatureHelpers] validateSignatureEnvelope with minimal valid envelope Ok``() =
     let secret = Guid.NewGuid().ToByteArray()
     let offset = DateTimeOffset.UtcNow
@@ -114,6 +118,7 @@ let ``[SignatureHelpers] validateSignatureEnvelope with minimal valid envelope O
     test <@ SignatureHelpers.validateSignatureEnvelope options envelope = Ok expected @>
 
 [<Theory>]
+[<Trait("Category", "Unit")>]
 [<InlineData("keyId")>]
 [<InlineData("signature")>]
 let ``[SignatureHelpers] validateSignatureEnvelope missing parameter Error``(param:string) =
@@ -146,6 +151,7 @@ let ``[SignatureHelpers] validateSignatureEnvelope missing parameter Error``(par
     test <@ SignatureHelpers.validateSignatureEnvelope options envelope = (RequiredParametersMissing [param] |> Error) @>
 
 [<Fact>]
+[<Trait("Category", "Unit")>]
 let ``[SignatureHelpers] validateSignatureEnvelope with invalid algorithm Error``() =
     let secret = Guid.NewGuid().ToByteArray()
     let offset = DateTimeOffset.UtcNow
@@ -169,6 +175,7 @@ let ``[SignatureHelpers] validateSignatureEnvelope with invalid algorithm Error`
     test <@ SignatureHelpers.validateSignatureEnvelope options envelope = Error InvalidAlgorithm @>
 
 [<Fact>]
+[<Trait("Category", "Unit")>]
 let ``[SignatureHelpers] validateSignatureEnvelope with invalid created timestamp Error``() =
     let secret = Guid.NewGuid().ToByteArray()
     let offset = DateTimeOffset.UtcNow
@@ -192,6 +199,7 @@ let ``[SignatureHelpers] validateSignatureEnvelope with invalid created timestam
     test <@ SignatureHelpers.validateSignatureEnvelope options envelope = Error (InvalidCreatedTimestamp "not a valid unix timestamp") @>
 
 [<Fact>]
+[<Trait("Category", "Unit")>]
 let ``[SignatureHelpers] validateSignatureEnvelope with future created timestamp Error``() =
     let secret = Guid.NewGuid().ToByteArray()
     let offset = DateTimeOffset.UtcNow
@@ -215,6 +223,7 @@ let ``[SignatureHelpers] validateSignatureEnvelope with future created timestamp
     test <@ SignatureHelpers.validateSignatureEnvelope options envelope = Error (InvalidCreatedTimestamp "timestamp in the future") @>
 
 [<Fact>]
+[<Trait("Category", "Unit")>]
 let ``[SignatureHelpers] validateSignatureEnvelope with future created timestamp, but inside skew limit Ok``() =
     let secret = Guid.NewGuid().ToByteArray()
     let offset = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(3.0)
@@ -246,6 +255,7 @@ let ``[SignatureHelpers] validateSignatureEnvelope with future created timestamp
     test <@ SignatureHelpers.validateSignatureEnvelope options envelope = Ok expected @>
 
 [<Fact>]
+[<Trait("Category", "Unit")>]
 let ``[SignatureHelpers] validateSignatureEnvelope with invalid expires timestamp Error``() =
     let secret = Guid.NewGuid().ToByteArray()
     let offset = DateTimeOffset.UtcNow
@@ -269,6 +279,7 @@ let ``[SignatureHelpers] validateSignatureEnvelope with invalid expires timestam
     test <@ SignatureHelpers.validateSignatureEnvelope options envelope = Error (InvalidExpiresTimestamp "not a valid unix timestamp") @>
 
 [<Fact>]
+[<Trait("Category", "Unit")>]
 let ``[SignatureHelpers] validateSignatureEnvelope with valid expires timestamp Ok``() =
     let secret = Guid.NewGuid().ToByteArray()
     let created = DateTimeOffset.UtcNow

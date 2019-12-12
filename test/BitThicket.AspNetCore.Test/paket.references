@@ -1,4 +1,5 @@
 FSharp.Core
+Microsoft.AspNetCore.TestHost
 Microsoft.NET.Test.Sdk
 Unquote
 xunit

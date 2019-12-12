@@ -6,6 +6,7 @@ framework: netcoreapp3.1, netstandard2.1
 nuget FSharp.Core
 nuget FParsec
 nuget Microsoft.AspNetCore.Authentication
+nuget Microsoft.AspNetCore.TestHost
 nuget Microsoft.NET.Test.Sdk
 nuget TaskBuilder.fs
 nuget Unquote
