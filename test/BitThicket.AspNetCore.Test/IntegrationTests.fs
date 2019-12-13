@@ -25,7 +25,10 @@ let ``signature authenticated request to root``() = task {
             .ConfigureServices(
                 fun services -> 
                     services.AddAuthentication("Signature")
-                    // .AddScheme<SignatureAuthenticationOptions<int>, SignatureAuthenticationHandler>("Signature", fun opts -> ())
+                        .AddScheme<SignatureAuthenticationOptions, SignatureAuthenticationHandler>("Signature", 
+                            fun (opts:SignatureAuthenticationOptions) -> 
+                                opts.Realm <- "Test"
+                                opts.ClientSecretProvider <- 
                     |> ignore)
                         
             .Configure(
