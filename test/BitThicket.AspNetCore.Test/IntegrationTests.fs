@@ -69,6 +69,44 @@ type IntegrationTests(output:ITestOutputHelper) =
 
     [<Fact>]
     [<Trait("Category", "Integration")>]
+    member __.``signature authentication success against bare request delegate``() = task {
+        let builder = 
+            WebHostBuilder()
+                .ConfigureServices(
+                    fun services -> 
+                        services
+                            .AddDistributedMemoryCache()
+                            .AddAuthentication("Signature")
+                            .AddScheme<SignatureAuthenticationOptions, SignatureAuthenticationHandler>("Signature", 
+                                fun (opts:SignatureAuthenticationOptions) -> 
+                                    opts.Realm <- "Test"
+                                    )
+                        |> ignore)
+                .ConfigureLogging(
+                    fun logging ->
+                        logging
+                            .AddFilter(fun _ -> true)
+                            .AddXunit(output)
+                        |> ignore)
+                .Configure(
+                    fun app ->
+                        app.UseAuthentication() |> ignore
+                        app.Run(fun context -> 
+                            task {
+                                if Seq.isEmpty context.User.Claims then
+                                    context.Response.StatusCode <- 401
+                                    context.Response.Headers.["WWW-Authenticate"] <- StringValues("Signature")
+                                else
+                                    do! context.Response.WriteAsync("Hello World")
+                            } :> Task))
+        use server = new TestServer(builder)
+
+        let! response = server.CreateClient().GetAsync("/")
+        test <@ response.StatusCode = HttpStatusCode.Unauthorized @>
+    }
+
+    [<Fact>]
+    [<Trait("Category", "Integration")>]
     member __.``signature authentication failure against simple MVC controller``() = task {
         let builder =
             WebHostBuilder()
