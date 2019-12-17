@@ -30,15 +30,16 @@ type SignatureAlgorithm =
 type IClientSecretProvider =
     abstract GetClientSecretAsync : string -> Task<byte[] option>
 
-type SignatureAuthenticationOptions
-    (secretProvider:IClientSecretProvider, ?realm:string, ?algorithms:SignatureAlgorithm[], ?maxSkew:int<s>) =
+type SignatureAuthenticationOptions() =
     inherit AuthenticationSchemeOptions()
-    member val Realm = defaultArg realm String.Empty with get,set
-    member val SupportedAlgorithms = defaultArg algorithms [| HmacSha256 |] with get,set
-    member val MaxClockSkew = defaultArg maxSkew 600<s> with get,set
-    member val ClientSecretProvider = secretProvider with get,set
-
-    new() = SignatureAuthenticationOptions()
+    member val Realm = String.Empty with get,set
+    member val SupportedAlgorithms = [| HmacSha256 |] with get,set
+    member val MaxClockSkew = 600<s> with get,set
+    member val ClientSecretProvider = 
+        { new IClientSecretProvider with
+            member __.GetClientSecretAsync(_) = 
+                None |> Task.FromResult } 
+        with get,set
 
 type UnvalidatedSignatureEnvelopeParsingError =
     | MissingHeaderValue
