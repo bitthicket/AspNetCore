@@ -1,3 +1,4 @@
+Divergic.Logging.Xunit
 FSharp.Core
 Microsoft.AspNetCore.TestHost
 Microsoft.Extensions.Caching.Abstractions

@@ -3,6 +3,7 @@ source https://api.nuget.org/v3/index.json
 storage: none
 framework: netcoreapp3.1, netstandard2.1
 
+nuget Divergic.Logging.Xunit
 nuget FSharp.Core
 nuget FParsec
 nuget Microsoft.AspNetCore.Authentication
