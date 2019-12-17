@@ -30,16 +30,20 @@ type SignatureAlgorithm =
 type IClientSecretProvider =
     abstract GetClientSecretAsync : string -> Task<byte[] option>
 
-type SignatureAuthenticationOptions() =
+type SignatureAuthenticationOptions
+    (secretProvider:IClientSecretProvider, ?realm:string, ?algorithms:SignatureAlgorithm[], ?maxSkew:int<s>) =
     inherit AuthenticationSchemeOptions()
-    member val Realm = String.Empty with get,set
-    member val SupportedAlgorithms = [| HmacSha256 |] with get,set
-    member val MaxClockSkew = 600<s> with get,set
-    member val ClientSecretProvider = 
-        { new IClientSecretProvider with
-            member __.GetClientSecretAsync(_) = 
-                None |> Task.FromResult } 
-        with get,set
+    member val Realm = defaultArg realm String.Empty with get,set
+    member val SupportedAlgorithms = defaultArg algorithms [| HmacSha256 |] with get,set
+    member val MaxClockSkew = defaultArg maxSkew 600<s> with get,set
+    member val ClientSecretProvider = secretProvider with get,set
+
+    new() = 
+        let defaultProvider = 
+            { new IClientSecretProvider with
+                member __.GetClientSecretAsync(_) = 
+                    None |> Task.FromResult }
+        SignatureAuthenticationOptions(defaultProvider)
 
 type UnvalidatedSignatureEnvelopeParsingError =
     | MissingHeaderValue
@@ -344,6 +348,7 @@ type SignatureAuthenticationHandler(options, loggerFactory, encoder, clock, cach
             let request = this.Request
             let logger = loggerFactory.CreateLogger<SignatureAuthenticationHandler>()
             let currentOptions = options.CurrentValue
+            printfn "entered HandleAuthenticateAsync"
             task {
                 match SignatureHelpers.getUnvalidatedSignatureEnvelope request with
                 | Error e -> 
