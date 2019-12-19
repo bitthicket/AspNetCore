@@ -1,5 +1,4 @@
 {
     "dotnet-test-explorer.testProjectPath": "**/*.Test.fsproj",
-    "dotnet-test-explorer.showCodeLens": false,
     "dotnet-test-explorer.enableTelemetry": false
 }

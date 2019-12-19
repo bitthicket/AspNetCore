@@ -2,6 +2,8 @@ module IntegrationTests
 
 open System
 open System.Net
+open System.Security.Cryptography
+open System.Text
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Authorization
 open Microsoft.AspNetCore.Builder
@@ -23,7 +25,7 @@ open Xunit.Abstractions
 
 // SUT
 open BitThicket.AspNetCore.Authentication
-
+open System.Net.Http.Headers
 
 
 type IntegrationTests(output:ITestOutputHelper) =
@@ -70,6 +72,7 @@ type IntegrationTests(output:ITestOutputHelper) =
     [<Fact>]
     [<Trait("Category", "Integration")>]
     member __.``signature authentication success against bare request delegate``() = task {
+        let clientSecret = Guid.NewGuid().ToByteArray()
         let builder = 
             WebHostBuilder()
                 .ConfigureServices(
@@ -77,10 +80,16 @@ type IntegrationTests(output:ITestOutputHelper) =
                         services
                             .AddDistributedMemoryCache()
                             .AddAuthentication("Signature")
-                            .AddScheme<SignatureAuthenticationOptions, SignatureAuthenticationHandler>("Signature", 
-                                fun (opts:SignatureAuthenticationOptions) -> 
-                                    opts.Realm <- "Test"
-                                    )
+                                .AddScheme<SignatureAuthenticationOptions, SignatureAuthenticationHandler>("Signature", 
+                                    fun (opts:SignatureAuthenticationOptions) -> 
+                                        opts.Realm <- "Test"
+                                        opts.ClientSecretProvider <- 
+                                            { new IClientSecretProvider with
+                                                member __.GetClientSecretAsync(_) =
+                                                    failwith "getting client secret"
+                                                    Some clientSecret |> Task.FromResult }
+                                        printfn "set SignatureAuthenticationoptions.ClientSecretProvider"
+                                        )
                         |> ignore)
                 .ConfigureLogging(
                     fun logging ->
@@ -100,9 +109,29 @@ type IntegrationTests(output:ITestOutputHelper) =
                                     do! context.Response.WriteAsync("Hello World")
                             } :> Task))
         use server = new TestServer(builder)
+        let client = server.CreateClient()
+        let signatureParameters = dict [
+            ("keyId", "test-key-1")
+            ("created", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString())
+        ]
+        let signatureString = 
+            sprintf
+                """
+                (created): %s
+                """
+                signatureParameters.["created"]
 
-        let! response = server.CreateClient().GetAsync("/")
-        test <@ response.StatusCode = HttpStatusCode.Unauthorized @>
+        use hash = new HMACSHA256(clientSecret)
+        let signature = hash.ComputeHash(Encoding.UTF8.GetBytes(signatureString))
+        let encodedSignature = Convert.ToBase64String(signature)
+
+        let authHeaderValue = 
+            sprintf "keyId=\"%s\",created=\"%s\",signature=\"%s\""
+                signatureParameters.["keyId"] signatureParameters.["created"] encodedSignature
+
+        client.DefaultRequestHeaders.Authorization <- AuthenticationHeaderValue("Signature", authHeaderValue)
+        let! response = client.GetAsync("/")
+        test <@ response.StatusCode = HttpStatusCode.OK @>
     }
 
     [<Fact>]

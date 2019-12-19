@@ -348,7 +348,8 @@ type SignatureAuthenticationHandler(options, loggerFactory, encoder, clock, cach
             let request = this.Request
             let logger = loggerFactory.CreateLogger<SignatureAuthenticationHandler>()
             let currentOptions = options.CurrentValue
-            printfn "entered HandleAuthenticateAsync"
+
+            logger.LogTrace("Entered SignatureAuthenticationHandler.HandleAuthenticateAsync")
             task {
                 match SignatureHelpers.getUnvalidatedSignatureEnvelope request with
                 | Error e -> 
