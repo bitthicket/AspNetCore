@@ -265,26 +265,26 @@ module SignatureHelpers =
             |> (fun strings -> String.Join(", ", strings).Trim())
             |> Some
 
-    let private resolveSignatureDataField (field:string) (validationState:SignatureValidationState) (stringState:string) =
+    let private resolveSignatureDataField (field:string) (validationState:SignatureValidationState) (stringState:StringBuilder) =
         try
             match field with
             | "(request-target)" -> 
-                stringState 
-                + (resolveRequestTarget validationState.request.Value) 
-                + " "
+                stringState
+                    .Append("(request-target): ")
+                    .AppendLine(resolveRequestTarget validationState.request.Value)
                 |> Ok
             | "(created)" ->
                 // I'm intentionally ignoring §2.3.2 here because it's 
                 // (a) unclear and (b) of dubious benefit, afaict
                 stringState
-                + validationState.envelope.Value.created.Value.ToString()
-                + " "
+                    .Append("(created): ")
+                    .AppendLine(validationState.envelope.Value.created.Value.ToString())
                 |> Ok
                 // Ditto, I'm ignoring §2.3.3 for the same reasons
             | "(expires)" ->
                 stringState
-                + validationState.envelope.Value.expires.Value.ToString()
-                + " "
+                    .Append("(expires): ")
+                    .AppendLine(validationState.envelope.Value.expires.Value.ToString())
                 |> Ok
             | field -> 
                 // §2.3.4: concatenate "name: value"
@@ -292,9 +292,10 @@ module SignatureHelpers =
                 match resolveHeaderValue field req.Headers with
                 | None -> sprintf "header not found for field: %s" field |> Error
                 | Some value -> 
-                    stringState 
-                    + field + ": " + value 
-                    + " " 
+                    stringState
+                        .Append(field)
+                        .Append(": ")
+                        .AppendLine(value)
                     |> Ok
         with
         | e -> sprintf "invalid signature field: %s" e.Message |> Error
@@ -304,8 +305,16 @@ module SignatureHelpers =
         |> Array.fold
             (fun state field ->
                 bindOk (resolveSignatureDataField field validationState) state)
-            (Ok String.Empty)
-        |> Result.map (fun ss -> ss.Trim())
+            (StringBuilder() |> Ok)
+        |> Result.map (fun ss -> ss.ToString().Trim())
+        |> Result.map (fun ss ->
+            match validationState.request with
+            | Some request -> 
+                let logger = request.HttpContext.RequestServices
+                                .GetService(typeof<ILogger<obj>>) :?> ILogger
+                logger.LogDebug("signatureString: '{0}'", ss)
+            | _ -> ()
+            ss)
         |> Result.map Encoding.UTF8.GetBytes
 
     let private computeCheckSignature state = 
@@ -347,7 +356,6 @@ type SignatureAuthenticationHandler(options, loggerFactory, encoder, clock, cach
             // binding is accessible.  This binding is then captured as part of the closure for the CE
             let request = this.Request
             let logger = loggerFactory.CreateLogger<SignatureAuthenticationHandler>()
-            let currentOptions = options.CurrentValue
 
             logger.LogTrace("Entered SignatureAuthenticationHandler.HandleAuthenticateAsync")
             task {
@@ -356,13 +364,13 @@ type SignatureAuthenticationHandler(options, loggerFactory, encoder, clock, cach
                     logger.LogError("Error getting signature envelope: {0}", sprintf "%A" e)
                     return AuthenticateResult.NoResult()
                 | Ok unvalidatedEnvelope -> 
-                    match SignatureHelpers.validateSignatureEnvelope currentOptions unvalidatedEnvelope with
+                    match SignatureHelpers.validateSignatureEnvelope this.Options unvalidatedEnvelope with
                     | Error e ->
                         logger.LogError("Error validating signature: {0}", sprintf "%A" e)
                         return AuthenticateResult.NoResult()
                     | Ok envelope ->
                         let! validationResult = 
-                            SignatureHelpers.validateSignature currentOptions request envelope
+                            SignatureHelpers.validateSignature this.Options request envelope
                         match validationResult with
                         | Error err -> return AuthenticateResult.Fail (sprintf "%A" err)
                         | Ok clientId ->
