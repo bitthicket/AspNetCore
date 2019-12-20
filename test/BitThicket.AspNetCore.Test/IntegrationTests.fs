@@ -1,6 +1,7 @@
 module IntegrationTests
 
 open System
+open System.Collections.Generic
 open System.Net
 open System.Net.Http.Headers
 open System.Security.Cryptography
@@ -28,8 +29,44 @@ open Xunit.Abstractions
 open BitThicket.AspNetCore.Authentication
 
 
-
 type IntegrationTests(output:ITestOutputHelper) =
+
+    let makeAuthHeaderValue keyId secret (fields:string seq) (values:IDictionary<string,string>) offset =
+        let initialSigParams = dict [
+            ("keyId", keyId)
+        ]
+
+        let signatureString = 
+            fields
+            |> Seq.fold 
+                (fun (buf:StringBuilder) field ->
+                    buf.Append(field).Append(": ").AppendLine(values.[field]))
+                (StringBuilder())
+            |> (fun sb -> sb.ToString())
+
+        let signatureParameters = dict [
+            ("keyId", keyId)
+            ("created", (DateTimeOffset.UtcNow.ToUnixTimeSeconds() + offset).ToString())
+        ]
+
+        // TODO: handle other headers here
+
+        let signatureString = 
+            sprintf
+                """
+                (created): %s
+                """
+                signatureParameters.["created"]
+            |> (fun s -> s.Trim())
+
+        output.WriteLine("signature string: '{0}'", signatureString)
+
+        use hash = new HMACSHA256(secret)
+        let signature = hash.ComputeHash(Encoding.UTF8.GetBytes(signatureString))
+        let encodedSignature = Convert.ToBase64String(signature)
+
+        sprintf "keyId=\"%s\",created=\"%s\",signature=\"%s\""
+            signatureParameters.["keyId"] signatureParameters.["created"] encodedSignature
 
     [<Fact>]
     [<Trait("Category", "Integration")>]
@@ -70,9 +107,14 @@ type IntegrationTests(output:ITestOutputHelper) =
         test <@ response.StatusCode = HttpStatusCode.Unauthorized @>
     }
 
-    [<Fact>]
+    static member private GetAuthHeaderValues() = seq {
+        [| () |]
+    }
+
+    [<Theory>]
     [<Trait("Category", "Integration")>]
-    member __.``signature authentication success against bare request delegate``() = task {
+    [<MemberData("GetAuthHeaderValues")>]
+    member __.``signature authentication success against bare request delegate``(authHeaderValue:string) = task {
         let clientSecret = Guid.NewGuid().ToByteArray()
         let objIdGen = System.Runtime.Serialization.ObjectIDGenerator()
         let builder = 
@@ -114,27 +156,9 @@ type IntegrationTests(output:ITestOutputHelper) =
         
         use server = new TestServer(builder)
         let client = server.CreateClient()
-        let signatureParameters = dict [
-            ("keyId", "test-key-1")
-            ("created", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString())
-        ]
-        let signatureString = 
-            sprintf
-                """
-                (created): %s
-                """
-                signatureParameters.["created"]
-            |> (fun s -> s.Trim())
         
-        output.WriteLine("signature string: '{0}'", signatureString)
-
-        use hash = new HMACSHA256(clientSecret)
-        let signature = hash.ComputeHash(Encoding.UTF8.GetBytes(signatureString))
-        let encodedSignature = Convert.ToBase64String(signature)
-
-        let authHeaderValue = 
-            sprintf "keyId=\"%s\",created=\"%s\",signature=\"%s\""
-                signatureParameters.["keyId"] signatureParameters.["created"] encodedSignature
+        
+        
 
         client.DefaultRequestHeaders.Authorization <- AuthenticationHeaderValue("Signature", authHeaderValue)
         let! response = client.GetAsync("/")
