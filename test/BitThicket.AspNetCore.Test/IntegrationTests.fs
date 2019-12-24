@@ -30,7 +30,7 @@ open BitThicket.AspNetCore.Authentication
 
 /// simple auth header value generator.  keyId and secret required; fields required.
 /// fields should not include "keyId" or "signature"
-/// values should include both field values and header values.
+/// values should include both field values and header values (other than keyId and signature).
 let makeAuthHeaderValue (out:ITestOutputHelper) keyId secret (fields:seq<string>) (headers:seq<string> option) (values:IDictionary<string,string>) =
     let signatureString = 
         match headers with
@@ -43,7 +43,7 @@ let makeAuthHeaderValue (out:ITestOutputHelper) keyId secret (fields:seq<string>
                 (fun (buf:StringBuilder) headerName ->
                     buf.Append(headerName).Append(": ").AppendLine(values.[headerName]))
                 (StringBuilder())
-            |> (fun sb -> sb.ToString())
+            |> (fun sb -> sb.ToString().Trim())
 
     out.WriteLine("signature string: '{0}'", signatureString)
 
@@ -107,21 +107,37 @@ type IntegrationTests(output:ITestOutputHelper) =
         let secret2 = Guid.NewGuid().ToByteArray()
         yield [| 
                  // basic scenario
-                 secret1
-                 (fun (out:ITestOutputHelper) -> 
-                    let createdTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString()
-                    makeAuthHeaderValue out "test-1" secret1 ["created"] None 
-                        (dict [ ("(created)", createdTs)
-                                ("created", createdTs) ])) 
-                 // secret2
-                 // (fun (out:ITestOutputHelper))
-               |]
+            secret1
+            (fun (out:ITestOutputHelper) -> 
+               let createdTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString()
+               makeAuthHeaderValue out "test-1" secret1 ["created"] None 
+                   (dict [ ("(created)", createdTs)
+                           ("created", createdTs) ])) 
+            true
+        |]
+        yield [|
+            secret2
+            (fun (out:ITestOutputHelper) ->
+                let created = DateTimeOffset.UtcNow
+                let expires = DateTimeOffset.UtcNow.AddMinutes(10.0)
+                let fields = ["created"; "expires"]
+                let headers = [ "(created)"; "(expires)" ] |> seq |> Some
+                let values =
+                    dict [
+                        ("created", created.ToUnixTimeSeconds().ToString())
+                        ("(created)", created.ToUnixTimeSeconds().ToString())
+                        ("expires", expires.ToUnixTimeSeconds().ToString())
+                        ("(expires)", expires.ToUnixTimeSeconds().ToString())
+                    ]
+                makeAuthHeaderValue out "test-2" secret2 fields headers values)
+            true
+        |]
     }
 
     [<Theory>]
     [<Trait("Category", "Integration")>]
     [<MemberData("GetAuthHeaderValues")>]
-    member __.``signature authentication success against bare request delegate``(clientSecret:byte[], authHeaderGenerator:ITestOutputHelper -> string) = task {
+    member __.``signature authentication success against bare request delegate``(clientSecret:byte[], authHeaderGenerator:ITestOutputHelper -> string, success:bool) = task {
         let objIdGen = System.Runtime.Serialization.ObjectIDGenerator()
         let builder = 
             WebHostBuilder()
@@ -167,7 +183,12 @@ type IntegrationTests(output:ITestOutputHelper) =
         client.DefaultRequestHeaders.Authorization <- AuthenticationHeaderValue("Signature", authHeaderValue)
 
         let! response = client.GetAsync("/")
-        test <@ response.StatusCode = HttpStatusCode.OK @>
+        if success then 
+            <@ response.StatusCode = HttpStatusCode.OK @>
+        else 
+            <@ response.StatusCode <> HttpStatusCode.OK @>
+        |> test
+       
     }
 
     [<Fact>]
