@@ -30,7 +30,7 @@ open BitThicket.AspNetCore.Authentication
 
 /// simple auth header value generator.  keyId and secret required; fields required.
 /// fields should not include "keyId" or "signature"
-/// values should include both field values and header values.
+/// values should include both field values and header values (other than keyId and signature).
 let makeAuthHeaderValue (out:ITestOutputHelper) keyId secret (fields:seq<string>) (headers:seq<string> option) (values:IDictionary<string,string>) =
     let signatureString = 
         match headers with
@@ -123,7 +123,8 @@ type IntegrationTests(output:ITestOutputHelper) =
                 let createdTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString()
                 makeAuthHeaderValue out "test-1" secret1 ["created"] None 
                     (dict [ ("(created)", createdTs)
-                            ("created", createdTs) ])) 
+                            ("created", createdTs) ]))
+            true
         |]
         yield [|
             secret2
@@ -141,13 +142,14 @@ type IntegrationTests(output:ITestOutputHelper) =
                     ("(expires)", expiresTs)
                 ]
                 makeAuthHeaderValue out "test-2" secret2 fields headers values)
+            true
         |]
     }
 
     [<Theory>]
     [<Trait("Category", "Integration")>]
     [<MemberData("GetAuthHeaderValues")>]
-    member __.``signature authentication success against bare request delegate``(clientSecret:byte[], authHeaderGenerator:ITestOutputHelper -> string) = task {
+    member __.``signature authentication success against bare request delegate``(clientSecret:byte[], authHeaderGenerator:ITestOutputHelper -> string, success:bool) = task {
         let objIdGen = System.Runtime.Serialization.ObjectIDGenerator()
         let builder = 
             WebHostBuilder()
@@ -194,7 +196,12 @@ type IntegrationTests(output:ITestOutputHelper) =
         client.DefaultRequestHeaders.Authorization <- AuthenticationHeaderValue("Signature", authHeaderValue)
 
         let! response = client.GetAsync("/")
-        test <@ response.StatusCode = HttpStatusCode.OK @>
+        if success then 
+            <@ response.StatusCode = HttpStatusCode.OK @>
+        else 
+            <@ response.StatusCode <> HttpStatusCode.OK @>
+        |> test
+       
     }
 
     [<Fact>]
