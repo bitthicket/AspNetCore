@@ -312,6 +312,7 @@ module SignatureHelpers =
             | Some request -> 
                 let logger = request.HttpContext.RequestServices
                                 .GetService(typeof<ILogger<obj>>) :?> ILogger
+                logger.LogDebug(sprintf "validationState: %A" validationState)
                 logger.LogDebug("signatureString: '{0}'", ss)
             | _ -> ()
             ss)
@@ -320,7 +321,7 @@ module SignatureHelpers =
     let private computeCheckSignature state = 
         match constructSignatureData state with
         | Error msg -> InvalidSignatureString msg |> Error
-        | Ok sigdata -> 
+        | Ok sigdata ->
             try
                 use hmac = new HMACSHA256(state.clientSecret.Value)
                 { state with
@@ -369,6 +370,7 @@ type SignatureAuthenticationHandler(options, loggerFactory, encoder, clock, cach
                         logger.LogError("Error validating signature: {0}", sprintf "%A" e)
                         return AuthenticateResult.NoResult()
                     | Ok envelope ->
+                        logger.LogDebug(sprintf "ValidatedSignatureEnvelope: %A" envelope)
                         let! validationResult = 
                             SignatureHelpers.validateSignature this.Options request envelope
                         match validationResult with

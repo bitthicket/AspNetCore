@@ -36,7 +36,6 @@ let makeAuthHeaderValue (out:ITestOutputHelper) keyId secret (fields:seq<string>
         match headers with
         | None -> 
             sprintf "(created): %s" values.["(created)"]
-            |> (fun s -> s.Trim())
         | Some headerNames ->
             headerNames
             |> Seq.fold 
@@ -44,6 +43,7 @@ let makeAuthHeaderValue (out:ITestOutputHelper) keyId secret (fields:seq<string>
                     buf.Append(headerName).Append(": ").AppendLine(values.[headerName]))
                 (StringBuilder())
             |> (fun sb -> sb.ToString())
+        |> (fun s -> s.Trim())
 
     out.WriteLine("signature string: '{0}'", signatureString)
 
@@ -51,14 +51,25 @@ let makeAuthHeaderValue (out:ITestOutputHelper) keyId secret (fields:seq<string>
     let signature = hash.ComputeHash(Encoding.UTF8.GetBytes(signatureString))
     let encodedSignature = Convert.ToBase64String(signature)
 
-    let sb = 
+    let authHeaderBuilder = 
         fields
         |> Seq.fold
-               (fun (buf:StringBuilder) field ->
-                   buf.AppendFormat(",{0}=\"{1}\"", field, values.[field]))
+               (fun (sb:StringBuilder) field ->
+                   sb.AppendFormat(",{0}=\"{1}\"", field, values.[field]))
             (StringBuilder(sprintf "keyId=\"%s\"" keyId))
     
-    sb.AppendFormat(",signature=\"{0}\"", encodedSignature).ToString()
+    headers 
+    |> Option.map 
+        (fun headerNames ->
+            headerNames
+            |> Seq.fold 
+                    (fun (sb:StringBuilder) name ->
+                        sb.Append(" ").Append(name))
+                    (StringBuilder())
+            |> (fun sb -> authHeaderBuilder.AppendFormat(",headers=\"{0}\"", sb.ToString().Trim())))
+    |> ignore
+
+    authHeaderBuilder.AppendFormat(",signature=\"{0}\"", encodedSignature).ToString().Trim()
 
 type IntegrationTests(output:ITestOutputHelper) =
 
@@ -107,15 +118,30 @@ type IntegrationTests(output:ITestOutputHelper) =
         let secret2 = Guid.NewGuid().ToByteArray()
         yield [| 
                  // basic scenario
-                 secret1
-                 (fun (out:ITestOutputHelper) -> 
-                    let createdTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString()
-                    makeAuthHeaderValue out "test-1" secret1 ["created"] None 
-                        (dict [ ("(created)", createdTs)
-                                ("created", createdTs) ])) 
-                 // secret2
-                 // (fun (out:ITestOutputHelper))
-               |]
+            secret1
+            (fun (out:ITestOutputHelper) -> 
+                let createdTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString()
+                makeAuthHeaderValue out "test-1" secret1 ["created"] None 
+                    (dict [ ("(created)", createdTs)
+                            ("created", createdTs) ])) 
+        |]
+        yield [|
+            secret2
+            (fun (out:ITestOutputHelper) ->
+                let createdDto = DateTimeOffset.UtcNow
+                let createdTs = createdDto.ToUnixTimeSeconds().ToString()
+                let expiresTs = createdDto.AddMinutes(10.0).ToUnixTimeSeconds().ToString()
+                let fields = ["created";"expires"]
+                let headers = ["(created)"; "(expires)"] 
+                              |> seq |> Some
+                let values = dict [
+                    ("created", createdTs)
+                    ("expires", expiresTs)
+                    ("(created)", createdTs)
+                    ("(expires)", expiresTs)
+                ]
+                makeAuthHeaderValue out "test-2" secret2 fields headers values)
+        |]
     }
 
     [<Theory>]
@@ -164,6 +190,7 @@ type IntegrationTests(output:ITestOutputHelper) =
         let client = server.CreateClient()
         
         let authHeaderValue = authHeaderGenerator(output)
+        output.WriteLine("Authorization header value: {0}", authHeaderValue)
         client.DefaultRequestHeaders.Authorization <- AuthenticationHeaderValue("Signature", authHeaderValue)
 
         let! response = client.GetAsync("/")
