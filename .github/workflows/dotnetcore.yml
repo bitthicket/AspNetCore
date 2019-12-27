@@ -1,0 +1,55 @@
+name: Build & Test .NET Core
+
+on: [push]
+
+jobs:
+  build_linux:
+    runs-on: [ubuntu-latest]
+    steps:
+    - uses: actions/checkout@v1
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: 3.1.100
+    - name: Restore Tools
+      run: dotnet tool restore
+    - name: Restore Packages
+      run: dotnet paket install
+    - name: Build with dotnet
+      run: dotnet build --configuration Release
+    - name: Run Tests
+      run: dotnet test --configuration Release
+      
+  build_macos:
+    runs-on: [macos-latest]
+    steps:
+      - uses: actions/checkout@v1
+      - name: Setup .NET Core
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: 3.1.100
+      - name: Restore Tools
+        run: dotnet tool restore
+      - name: Restore Packages
+        run: dotnet paket install
+      - name: Build with dotnet
+        run: dotnet build --configuration Release
+      - name: Run Tests
+        run: dotnet test --configuration Release
+  
+  build_windows:
+    runs-on: [windows-latest]
+    steps:
+      - uses: actions/checkout@v1
+      - name: Setup .NET Core
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: 3.1.100
+      - name: Restore Tools
+        run: dotnet tool restore
+      - name: Restore Packages
+        run: dotnet paket install
+      - name: Build with dotnet
+        run: dotnet build --configuration Release
+      - name: Run Tests
+        run: dotnet test --configuration Release
