@@ -101,7 +101,6 @@ type UnvalidatedSignatureEnvelope =
                     Map.ofList result |> Ok
             with
             | e ->
-                printfn "%A" e
                 ParserError e.Message |> Error
             |> Result.bind
                 (fun map -> 

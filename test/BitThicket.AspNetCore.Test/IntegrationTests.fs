@@ -6,6 +6,7 @@ open System.Net
 open System.Net.Http.Headers
 open System.Security.Cryptography
 open System.Text
+open System.Text.RegularExpressions
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Authorization
 open Microsoft.AspNetCore.Builder
@@ -113,19 +114,26 @@ type IntegrationTests(output:ITestOutputHelper) =
     }
 
     static member private GetAuthHeaderValues() : seq<obj[]> = seq {
-        // simplest signature; keyId+created only
         let secret1 = Guid.NewGuid().ToByteArray()
         let secret2 = Guid.NewGuid().ToByteArray()
+        let secret3 = Guid.NewGuid().ToByteArray()
+        let headers3 = dict [
+            ("x-special-header", "7")
+        ]
+
+        // simplest signature; keyId+created only
         yield [| 
-                 // basic scenario
             secret1
             (fun (out:ITestOutputHelper) -> 
                 let createdTs = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString()
                 makeAuthHeaderValue out "test-1" secret1 ["created"] None 
                     (dict [ ("(created)", createdTs)
                             ("created", createdTs) ]))
+            None
             true
         |]
+
+        // (created) (expires)
         yield [|
             secret2
             (fun (out:ITestOutputHelper) ->
@@ -142,14 +150,80 @@ type IntegrationTests(output:ITestOutputHelper) =
                     ("(expires)", expiresTs)
                 ]
                 makeAuthHeaderValue out "test-2" secret2 fields headers values)
+            None
             true
+        |]
+
+        // basic header usage
+        let headers3 = dict [
+            ("X-Special-Header", "7")
+        ]
+        yield [|
+            secret3
+            (fun (out:ITestOutputHelper) ->
+                let created = DateTimeOffset.UtcNow
+                let fields = ["created"]
+                let headers = 
+                    ["(created)"; "x-special-header"]
+                    |> seq |> Some
+                let values = dict [
+                    ("x-special-header", headers3.["X-Special-Header"])
+                    ("created", created.ToUnixTimeSeconds().ToString())
+                    ("(created)", created.ToUnixTimeSeconds().ToString())
+                ]
+                makeAuthHeaderValue out "test-3" secret3 fields headers values)
+            Some headers3
+            true
+        |]
+        // parser failiure (test-4)
+        yield [|
+            Guid.Empty.ToByteArray()
+            (fun (out:ITestOutputHelper) -> 
+                out.WriteLine("Using unparsable header")
+                "hahahahaha")
+            None
+            false
+        |]
+
+        // totally bogus signature
+        yield [|
+            Guid.Empty.ToByteArray()
+            (fun (out:ITestOutputHelper) -> 
+                out.WriteLine("Using bogus signature")
+                @"keyId=""test-5"",signature=""hahahaha""")
+            None
+            false
+        |]
+
+        let headers5 = dict [
+            ("X-Unused-Header", "")
+        ]
+        let secret5 = Guid.NewGuid().ToByteArray()
+        yield [|
+            secret5
+            (fun (out:ITestOutputHelper) ->
+                let created = DateTimeOffset.UtcNow
+                let fields = ["created"]
+                let headers = ["(created)"; "x-special-header"]
+                              |> seq |> Some
+                let values = dict [
+                    ("x-special-header", "7")
+                    ("created", created.ToUnixTimeSeconds().ToString())
+                    ("(created)", created.ToUnixTimeSeconds().ToString())
+                ]
+                makeAuthHeaderValue out "test-5" secret5 fields headers values)
+            Some headers5
+            false
         |]
     }
 
     [<Theory>]
     [<Trait("Category", "Integration")>]
     [<MemberData("GetAuthHeaderValues")>]
-    member __.``signature authentication success against bare request delegate``(clientSecret:byte[], authHeaderGenerator:ITestOutputHelper -> string, success:bool) = task {
+    member __.``signature authentication success against bare request delegate``(clientSecret:byte[], 
+                                                                                 authHeaderGenerator:ITestOutputHelper -> string, 
+                                                                                 headers:IDictionary<string,string> option, 
+                                                                                 success:bool) = task {
         let objIdGen = System.Runtime.Serialization.ObjectIDGenerator()
         let builder = 
             WebHostBuilder()
@@ -195,13 +269,19 @@ type IntegrationTests(output:ITestOutputHelper) =
         output.WriteLine("Authorization header value: {0}", authHeaderValue)
         client.DefaultRequestHeaders.Authorization <- AuthenticationHeaderValue("Signature", authHeaderValue)
 
+        // set headers required by signature
+        match headers with
+        | Some headerList ->
+            for headerPair in headerList do
+                client.DefaultRequestHeaders.Add(headerPair.Key, headerPair.Value)
+        | _ -> ()
+
         let! response = client.GetAsync("/")
         if success then 
             <@ response.StatusCode = HttpStatusCode.OK @>
         else 
             <@ response.StatusCode <> HttpStatusCode.OK @>
         |> test
-       
     }
 
     [<Fact>]
