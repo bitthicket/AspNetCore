@@ -16,6 +16,6 @@ jobs:
     - name: Restore Tools
       run: dotnet tool restore
     - name: Restore Packages
-      run: dotnet packet install
+      run: dotnet paket install
     - name: Build with dotnet
       run: dotnet build --configuration Release
