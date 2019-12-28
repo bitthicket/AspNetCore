@@ -3,6 +3,7 @@ nuget Fake.DotNet.Cli
 nuget Fake.IO.FileSystem
 nuget Fake.Core.Target //"
 #load ".fake/build.fsx/intellisense.fsx"
+
 open Fake.Core
 open Fake.DotNet
 open Fake.IO
@@ -18,10 +19,17 @@ Target.create "Clean" (fun _ ->
     |> Shell.cleanDirs 
 )
 
+Target.create "PackageInstall" (fun _ ->
+    DotNet.exec id "paket" "install"
+    |> ignore)
+
 Target.create "Build" (fun _ ->
     !! "src/**/*.*proj"
     |> Seq.iter (DotNet.build id)
 )
+
+"PackageInstall"
+  ==> "Build"
 
 Target.create "All" ignore
 
