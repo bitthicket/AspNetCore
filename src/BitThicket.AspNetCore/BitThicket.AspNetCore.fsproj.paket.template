@@ -1,0 +1,9 @@
+type file
+id BitThicket.AspNetCore
+version 1.0
+licenseUrl https://github.com/bitthicket/AspNetCore/blob/master/LICENSE
+authors Benjamin Collins
+description
+    A collection of ASP.NET Core utilities extensions
+files
+    bin/Release => lib
