@@ -30,26 +30,31 @@ Target.create "Build" (fun _ ->
 )
 
 Target.create "BuildPackage" (fun _ ->
-    Paket.pack (fun p ->
-                  { p with
-                      BuildConfig = "Release"
-                      ProjectUrl = "src/BitThcket.AspNetCore.fsproj" }))
+    Paket.pack 
+        (fun p ->
+            { p with
+                ToolType = ToolType.CreateLocalTool()
+                BuildConfig = "Release"
+                ProjectUrl = "src/BitThcket.AspNetCore.fsproj" }))
 
 Target.create "PushPackage" (fun _ ->
-    Paket.push (fun p ->
-                   let feedUrl = Environment.environVarOrNone "NUGET_FEED_URL"
-                   match feedUrl with
-                   | None -> failwith "no feed url provided"
-                   | Some url ->
-                       match Environment.environVarOrNone "NUGET_FEED_KEY" with
-                       | None -> 
-                           Trace.log "no nuget feed key provided"
-                           { p with
-                               PublishUrl = url}
-                       | Some key ->
-                           { p with
-                               PublishUrl = url
-                               ApiKey = key}))
+    Paket.push 
+        (fun p ->
+            let feedUrl = Environment.environVarOrNone "NUGET_FEED_URL"
+            match feedUrl with
+            | None -> failwith "no feed url provided"
+            | Some url ->
+                match Environment.environVarOrNone "NUGET_FEED_KEY" with
+                | None -> 
+                    Trace.log "no nuget feed key provided"
+                    { p with
+                        ToolType = ToolType.CreateLocalTool()
+                        PublishUrl = url}
+                | Some key ->
+                    { p with
+                        ToolType = ToolType.CreateLocalTool()
+                        PublishUrl = url
+                        ApiKey = key}))
 
 "PackageInstall"
   ==> "Build"
