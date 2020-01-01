@@ -1,0 +1,25 @@
+name: Publish Release
+
+on:
+  release:
+    types: [published,prereleased]
+    branches: 
+      - master
+
+jobs:
+  publish_myget:
+
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: 3.1.100
+    - name: Bootstrap tools
+      run: dotnet tool restore
+    - name: Build package
+      run: dotnet fake build -t BuildPackage
+    - name: Publish Package 
+      run: dotnet fake build -t PushPackage
