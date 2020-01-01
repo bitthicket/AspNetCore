@@ -23,3 +23,6 @@ jobs:
       run: dotnet fake build -t BuildPackage
     - name: Publish Package 
       run: dotnet fake build -t PushPackage
+      env:
+        NUGET_FEED_URL: ${{ secrets.NUGET_FEED_URL }}
+        NUGET_FEED_KEY: ${{ secrets.NUGET_FEED_KEY }}
