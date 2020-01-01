@@ -1,6 +1,6 @@
 type file
 id BitThicket.AspNetCore
-version 1.0
+version 1.0.0-beta.1
 licenseUrl https://github.com/bitthicket/AspNetCore/blob/master/LICENSE
 authors Benjamin Collins
 description
