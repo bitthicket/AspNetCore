@@ -21,3 +21,5 @@ jobs:
       run: dotnet tool restore
     - name: Build package
       run: dotnet fake build -t BuildPackage
+    - name: Publish Package 
+      run: dotnet fake build -t PushPackage
