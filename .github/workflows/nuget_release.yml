@@ -23,3 +23,6 @@ jobs:
       run: dotnet fake build -t BuildPackage
     - name: Publish Package 
       run: dotnet fake build -t PushPackage
+      env:
+        NUGET_FEED_URL: https://nuget.pkg.github.com/bitthicket/index.json
+        NUGET_FEED_KEY: ${{ secrets.GITHUB_TOKEN }}
