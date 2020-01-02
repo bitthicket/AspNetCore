@@ -28,4 +28,4 @@ jobs:
       run: |        
         nuget sources Add -Name "GPR" -Source "https://nuget.pkg.github.com/bitthicket/index.json" -UserName bitthicket -Password ${{ secrets.GITHUB_TOKEN }}
         nuget setApiKey ${{ secrets.NUGET_API_KEY }} -Source "GPR"
-        nuget push nupkg\*.nupkg -Source "GPR" -SkipDuplicate
+        nuget push temp\*.nupkg -Source "GPR" -SkipDuplicate
