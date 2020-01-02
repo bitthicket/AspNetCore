@@ -40,21 +40,9 @@ Target.create "BuildPackage" (fun _ ->
 Target.create "PushPackage" (fun _ ->
     Paket.push 
         (fun p ->
-            let feedUrl = Environment.environVarOrNone "NUGET_FEED_URL"
-            match feedUrl with
-            | None -> failwith "no feed url provided"
-            | Some url ->
-                match Environment.environVarOrNone "NUGET_FEED_KEY" with
-                | None -> 
-                    Trace.log "no nuget feed key provided"
-                    { p with
-                        ToolType = ToolType.CreateLocalTool()
-                        PublishUrl = url}
-                | Some key ->
-                    { p with
-                        ToolType = ToolType.CreateLocalTool()
-                        PublishUrl = url
-                        ApiKey = key}))
+            { p with
+                ToolType = ToolType.CreateLocalTool() } ))
+
 
 "PackageInstall"
   ==> "Build"
