@@ -21,8 +21,8 @@ jobs:
       run: dotnet tool restore
     - name: Build package
       run: dotnet fake build -t BuildPackage
-    - name: Publish Package 
-      run: dotnet fake build -t PushPackage
-      env:
-        NUGET_FEED_URL: https://nuget.pkg.github.com/bitthicket/index.json
-        NUGET_FEED_KEY: ${{ secrets.GITHUB_TOKEN }}
+    - name: Push package to the Github Package Registry
+      run: |        
+        nuget sources Add -Name "GPR" -Source "https://nuget.pkg.github.com/bitthicket/index.json" -UserName bitthicket -Password ${{ secrets.GITHUB_TOKEN }}
+        nuget setApiKey ${{ secrets.NUGET_API_KEY }} -Source "GPR"
+        nuget push nupkg\*.nupkg -Source "GPR" -SkipDuplicate
