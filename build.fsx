@@ -35,7 +35,7 @@ Target.create "BuildPackage" (fun _ ->
             { p with
                 ToolType = ToolType.CreateLocalTool()
                 BuildConfig = "Release"
-                ProjectUrl = "src/BitThcket.AspNetCore.fsproj" }))
+                TemplateFile = "src/BitThicket.AspNetCore/paket.template" }))
 
 Target.create "PushPackage" (fun _ ->
     Paket.push 
