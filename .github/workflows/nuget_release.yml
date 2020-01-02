@@ -26,6 +26,7 @@ jobs:
       run: dotnet fake build -t BuildPackage
     - name: Push package to the GitHub Package Registry
       run: |
+           ls -l temp
            for f in ./temp/*.nupkg
            do
              curl -vX PUT -u "bitthicket:${{ secrets.GITHUB_TOKEN }}" -F package=@$f https://nuget.pkg.github.com/bitthicket/
