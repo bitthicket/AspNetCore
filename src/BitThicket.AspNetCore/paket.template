@@ -1,0 +1,13 @@
+type project
+id BitThicket.AspNetCore
+version 1.0.0-beta.1
+authors Ben Collins
+company Bit Thicket Enterprises
+description A collection of extensions and customizations for ASP.NET Core
+copyright © 2020 Bit Thicket Enterprises
+licenseUrl https://github.com/bitthicket/AspNetCore/blob/master/LICENSE
+repositoryUrl https://github.com/bitthicket/AspNetCore
+projectUrl https://github.com/bitthicket/AspNetCore
+tags ASP.NET Core;F♯;FSharp
+include-pdbs true
+

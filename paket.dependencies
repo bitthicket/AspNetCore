@@ -4,13 +4,13 @@ storage: none
 framework: netcoreapp3.1, netstandard2.1
 
 nuget Divergic.Logging.Xunit
-nuget FSharp.Core
-nuget FParsec
-nuget Microsoft.AspNetCore.Authentication
-nuget Microsoft.AspNetCore.TestHost
-nuget Microsoft.Extensions.Caching.Abstractions
-nuget Microsoft.NET.Test.Sdk
-nuget TaskBuilder.fs
+nuget FSharp.Core ~> 4.7
+nuget FParsec ~> 1.0
+nuget Microsoft.AspNetCore.Authentication ~> 2
+nuget Microsoft.AspNetCore.TestHost ~> 3
+nuget Microsoft.Extensions.Caching.Abstractions ~> 3
+nuget Microsoft.NET.Test.Sdk ~> 16
+nuget TaskBuilder.fs ~> 2
 nuget Unquote
 nuget xunit
 nuget xunit.runner.visualstudio

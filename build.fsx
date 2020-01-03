@@ -29,15 +29,15 @@ Target.create "Build" (fun _ ->
     |> Seq.iter (DotNet.build id)
 )
 
-Target.create "BuildPackage" (fun _ ->
+Target.create "Pack" (fun _ ->
     Paket.pack 
         (fun p ->
             { p with
                 ToolType = ToolType.CreateLocalTool()
                 BuildConfig = "Release"
-                ProjectUrl = "src/BitThcket.AspNetCore.fsproj" }))
+                TemplateFile = "src/BitThicket.AspNetCore/paket.template" }))
 
-Target.create "PushPackage" (fun _ ->
+Target.create "Push" (fun _ ->
     Paket.push 
         (fun p ->
             { p with
@@ -51,7 +51,7 @@ Target.create "All" ignore
 
 "Clean"
   ==> "Build"
-  ==> "BuildPackage"
+  ==> "Pack"
   ==> "All"
 
 Target.runOrDefault "All"
