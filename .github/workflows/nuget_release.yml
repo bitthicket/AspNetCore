@@ -17,12 +17,15 @@ jobs:
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: 3.1.100
+    - uses: nuget/setup-nuget@v1
+      with:
+        nuget-version: 'latest'
     - name: Bootstrap tools
       run: dotnet tool restore
     - name: Build package
-      run: dotnet fake build -t BuildPackage
-    - name: Publish Package 
-      run: dotnet fake build -t PushPackage
+      run: dotnet fake build -t pack
+    - name: Push package to the Github Package Registry
+      run: dotnet fake build -t push
       env:
         NUGET_FEED_URL: https://nuget.pkg.github.com/bitthicket/
         NUGET_FEED_KEY: ${{ secrets.GITHUB_TOKEN }}
