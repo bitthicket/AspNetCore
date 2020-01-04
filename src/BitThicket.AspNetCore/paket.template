@@ -1,6 +1,5 @@
 type project
 id BitThicket.AspNetCore
-version 1.0.0-beta.1
 authors Ben Collins
 company Bit Thicket Enterprises
 description A collection of extensions and customizations for ASP.NET Core
