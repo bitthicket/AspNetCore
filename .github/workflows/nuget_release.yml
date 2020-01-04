@@ -7,7 +7,7 @@ on:
       - master
 
 jobs:
-  publish_myget:
+  push:
 
     runs-on: windows-latest
 
@@ -17,9 +17,6 @@ jobs:
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: 3.1.100
-    - uses: nuget/setup-nuget@v1
-      with:
-        nuget-version: 'latest'
     - name: Bootstrap tools
       run: dotnet tool restore
     - name: Build package
