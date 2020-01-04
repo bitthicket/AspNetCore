@@ -25,12 +25,10 @@ jobs:
     - name: Build package
       run: dotnet fake build -t pack
     - name: Push package to the Github Package Registry
-      run: dotnet paket config add-token $env:NUGET_FEED_URL $env:NUGET_FEED_KEY
+      run: |
+        dotnet paket config add-token $env:NUGET_FEED_URL $env:NUGET_FEED_KEY;
+        dotnet fake build -t push
       shell: powershell
-      env:
-        NUGET_FEED_URL: https://nuget.pkg.github.com/bitthicket/
-        NUGET_FEED_KEY: ${{ secrets.GITHUB_TOKEN }}
-      run: dotnet fake build -t push
       env:
         NUGET_FEED_URL: https://nuget.pkg.github.com/bitthicket/
         NUGET_FEED_KEY: ${{ secrets.GITHUB_TOKEN }}
