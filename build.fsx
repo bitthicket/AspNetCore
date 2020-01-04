@@ -48,10 +48,24 @@ Target.create "Pack" (fun _ ->
                 TemplateFile = "src/BitThicket.AspNetCore/paket.template" }))
 
 Target.create "Push" (fun _ ->
-    Paket.push 
+    Paket.push
         (fun p ->
-            { p with
-                ToolType = ToolType.CreateLocalTool() } ))
+            match Environment.environVarOrNone "NUGET_FEED_URL" with
+            | None -> failwith "no feed url provided"
+            | Some feedUrl ->
+                match Environment.environVarOrNone "NUGET_FEED_KEY" with
+                | None ->
+                    Trace.log "No API key provided."
+                    { p with
+                        ToolType = ToolType.CreateLocalTool()
+                        WorkingDir = "./temp"
+                        PublishUrl = feedUrl}
+                | Some key ->
+                    { p with
+                        ToolType = ToolType.CreateLocalTool()
+                        WorkingDir = "./temp"
+                        PublishUrl = feedUrl
+                        ApiKey = key}))
 
 
 "PackageInstall"
